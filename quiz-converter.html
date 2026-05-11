@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Excel → Quiz HTML Converter | Agriedu4u</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&family=DM+Mono&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green: #1a7f5a; --green-light: #e8f5ef; --green-dark: #145f44;
+      --red: #c0392b; --red-light: #fdecea;
+      --amber: #b45309; --amber-light: #fffbeb;
+      --text: #1a1a1a; --muted: #6b7280; --border: #e5e7eb;
+      --bg: #f9fafb; --white: #fff;
+      --r: 10px; --serif: 'DM Serif Display', serif; --sans: 'DM Sans', sans-serif; --mono: 'DM Mono', monospace;
+    }
+    body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; }
+    header { background: var(--white); border-bottom: 1px solid var(--border); padding: .8rem 1.25rem; display: flex; align-items: center; gap: 10px; }
+    .logo-mark { width: 30px; height: 30px; background: var(--green); border-radius: 7px; display: flex; align-items: center; justify-content: center; }
+    .logo-mark svg { width: 17px; height: 17px; fill: white; }
+    .logo-text { font-family: var(--serif); font-size: 16px; }
+    .logo-text span { color: var(--green); }
+    .tool-tag { font-size: 11px; background: var(--amber-light); color: var(--amber); padding: 2px 8px; border-radius: 20px; font-weight: 500; margin-left: 4px; }
+
+    .wrap { max-width: 680px; margin: 0 auto; padding: 2rem 1.25rem; }
+    h1 { font-family: var(--serif); font-size: clamp(1.5rem, 4vw, 2rem); margin-bottom: .4rem; }
+    .sub { font-size: 14px; color: var(--muted); margin-bottom: 1.75rem; line-height: 1.6; }
+
+    /* Column mapper info */
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1.5rem; }
+    @media(max-width:500px) { .info-grid { grid-template-columns: 1fr; } }
+    .info-card { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; }
+    .info-card h3 { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: .6rem; }
+    .col-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 13px; }
+    .col-name { font-family: var(--mono); font-size: 11.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px; color: var(--text); white-space: nowrap; }
+    .arrow { color: var(--muted); font-size: 12px; }
+    .col-role { color: var(--muted); font-size: 12px; }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 14px;
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      background: var(--white);
+      margin-bottom: 1rem;
+    }
+    .drop-zone.over { border-color: var(--green); background: var(--green-light); }
+    .drop-zone.has-file { border-color: var(--green); border-style: solid; }
+    .drop-icon { font-size: 36px; margin-bottom: .75rem; }
+    .drop-title { font-size: 15px; font-weight: 500; margin-bottom: .3rem; }
+    .drop-sub { font-size: 13px; color: var(--muted); }
+    .drop-sub span { color: var(--green); cursor: pointer; }
+    #file-input { display: none; }
+
+    /* Options row */
+    .opts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+    @media(max-width:480px) { .opts-row { grid-template-columns: 1fr; } }
+    .field { background: var(--white); border: 1px solid var(--border); border-radius: var(--r); padding: .9rem 1rem; }
+    .field label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; display: block; margin-bottom: .4rem; }
+    .field input, .field select { width: 100%; font-size: 13px; border: none; background: transparent; color: var(--text); font-family: var(--sans); outline: none; }
+
+    /* Status */
+    .status { border-radius: var(--r); padding: .75rem 1rem; font-size: 13px; margin-bottom: 1rem; display: none; }
+    .status.ok { background: var(--green-light); color: #0d5c3e; display: block; }
+    .status.err { background: var(--red-light); color: #7b1a13; display: block; }
+    .status.warn { background: var(--amber-light); color: #7c2d12; display: block; }
+
+    /* Preview table */
+    .preview-wrap { background: var(--white); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 1rem; display: none; }
+    .preview-wrap.show { display: block; }
+    .preview-head { padding: .75rem 1rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+    .preview-head h3 { font-size: 13px; font-weight: 500; }
+    .preview-head small { font-size: 12px; color: var(--muted); }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: var(--bg); padding: .5rem .75rem; text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: .45rem .75rem; border-bottom: 1px solid var(--border); color: var(--text); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    tr:last-child td { border-bottom: none; }
+    .ans-badge { background: var(--green-light); color: var(--green); font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 10px; }
+
+    /* Generate btn */
+    .btn-gen { width: 100%; padding: .8rem; background: var(--green); color: white; border: none; border-radius: var(--r); font-size: 15px; font-weight: 500; cursor: pointer; font-family: var(--sans); transition: background .15s; display: none; }
+    .btn-gen:hover { background: var(--green-dark); }
+    .btn-gen.show { display: block; }
+
+    /* Download card */
+    .dl-card { background: var(--white); border: 1px solid var(--green); border-radius: 12px; padding: 1.25rem; margin-top: 1rem; display: none; }
+    .dl-card.show { display: block; }
+    .dl-card h3 { font-size: 14px; font-weight: 500; margin-bottom: .4rem; }
+    .dl-card p { font-size: 13px; color: var(--muted); margin-bottom: 1rem; line-height: 1.5; }
+    .dl-btn { display: inline-block; padding: .6rem 1.25rem; background: var(--green); color: white; border: none; border-radius: var(--r); font-size: 14px; font-weight: 500; cursor: pointer; font-family: var(--sans); text-decoration: none; }
+    .dl-btn:hover { background: var(--green-dark); }
+    .steps { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    .steps h4 { font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: .5rem; text-transform: uppercase; letter-spacing: .04em; }
+    .step { font-size: 12.5px; color: var(--muted); padding: .3rem 0; display: flex; gap: 8px; align-items: flex-start; }
+    .step-n { min-width: 18px; height: 18px; border-radius: 50%; background: var(--green-light); color: var(--green); font-size: 10px; font-weight: 500; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo-mark"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20h8v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z"/></svg></div>
+  <span class="logo-text">agri<span>edu4u</span></span>
+  <span class="tool-tag">Converter tool</span>
+</header>
+
+<div class="wrap">
+  <h1>Excel → Quiz HTML Converter</h1>
+  <p class="sub">Upload any quiz Excel file in the standard format. The tool reads your questions, options, and correct answers, and generates a ready-to-upload HTML quiz page — no coding needed.</p>
+
+  <div class="info-grid">
+    <div class="info-card">
+      <h3>Required columns</h3>
+      <div class="col-row"><span class="col-name">Question Text</span><span class="arrow">→</span><span class="col-role">The question</span></div>
+      <div class="col-row"><span class="col-name">Answer 1–4</span><span class="arrow">→</span><span class="col-role">Options A–D</span></div>
+      <div class="col-row"><span class="col-name">Answer</span><span class="arrow">→</span><span class="col-role">Correct (1–4)</span></div>
+    </div>
+    <div class="info-card">
+      <h3>Optional columns</h3>
+      <div class="col-row"><span class="col-name">Quiz Title</span><span class="arrow">→</span><span class="col-role">Page heading</span></div>
+      <div class="col-row"><span class="col-name">Quiz Content</span><span class="arrow">→</span><span class="col-role">Subtitle</span></div>
+      <div class="col-row"><span class="col-name">Message with correct answer</span><span class="arrow">→</span><span class="col-role">Explanation</span></div>
+    </div>
+  </div>
+
+  <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()"
+       ondragover="ev(event,'over')" ondragleave="ev(event,'leave')" ondrop="onDrop(event)">
+    <div class="drop-icon">📊</div>
+    <div class="drop-title" id="drop-title">Drop your Excel file here</div>
+    <div class="drop-sub">or <span onclick="event.stopPropagation();document.getElementById('file-input').click()">browse to upload</span> · .xlsx files only</div>
+  </div>
+  <input type="file" id="file-input" accept=".xlsx" onchange="loadFile(this.files[0])" />
+
+  <div class="opts-row">
+    <div class="field">
+      <label>Quiz title (overrides Excel)</label>
+      <input type="text" id="opt-title" placeholder="Leave blank to use Excel value" />
+    </div>
+    <div class="field">
+      <label>Site URL</label>
+      <input type="text" id="opt-url" placeholder="https://agriedu4u.com" value="https://agriedu4u.com" />
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="preview-wrap" id="preview-wrap">
+    <div class="preview-head">
+      <h3 id="preview-title">Preview</h3>
+      <small id="preview-count"></small>
+    </div>
+    <div class="table-scroll">
+      <table id="preview-table">
+        <thead><tr><th>#</th><th>Question</th><th>A</th><th>B</th><th>C</th><th>D</th><th>Answer</th></tr></thead>
+        <tbody id="preview-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <button class="btn-gen show" id="btn-gen" onclick="generate()" style="display:none">Generate quiz HTML →</button>
+
+  <div class="dl-card" id="dl-card">
+    <h3>✅ Quiz HTML generated!</h3>
+    <p id="dl-desc"></p>
+    <a id="dl-link" class="dl-btn" download="quiz.html">Download HTML file</a>
+    <div class="steps">
+      <h4>How to add to agriedu4u.com (WordPress)</h4>
+      <div class="step"><span class="step-n">1</span>Upload the HTML file via FTP or File Manager to your server (e.g. <code>/public_html/quiz/rice-module-1.html</code>)</div>
+      <div class="step"><span class="step-n">2</span>Or paste the file contents into a WordPress page using an HTML block (Gutenberg) or a plugin like WPCode</div>
+      <div class="step"><span class="step-n">3</span>Go to Google Search Console → URL Inspection → Request Indexing for the page</div>
+      <div class="step"><span class="step-n">4</span>Test the schema at <strong>search.google.com/test/rich-results</strong></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let parsedQ = [], rawTitle = '', rawSubtitle = '';
+
+function ev(e, type) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.toggle('over', type === 'over');
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+}
+
+function setStatus(msg, type) {
+  const s = document.getElementById('status');
+  s.textContent = msg; s.className = 'status ' + type;
+}
+
+function loadFile(file) {
+  if (!file || !file.name.endsWith('.xlsx')) { setStatus('Please upload a .xlsx file.', 'err'); return; }
+  document.getElementById('drop-title').textContent = file.name;
+  document.getElementById('drop-zone').classList.add('has-file');
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!rows.length) { setStatus('The sheet appears to be empty.', 'err'); return; }
+
+      const header = Object.keys(rows[0]);
+      const has = col => header.some(h => h.trim() === col);
+
+      if (!has('Question Text') || !has('Answer 1') || !has('Answer')) {
+        setStatus('Missing required columns: "Question Text", "Answer 1", "Answer". Check your file format.', 'err');
+        return;
+      }
+
+      parsedQ = [];
+      rows.forEach(r => {
+        const q = (r['Question Text'] || '').toString().trim();
+        if (!q) return;
+        const opts = [
+          (r['Answer 1'] || '').toString().trim(),
+          (r['Answer 2'] || '').toString().trim(),
+          (r['Answer 3'] || '').toString().trim(),
+          (r['Answer 4'] || '').toString().trim(),
+        ];
+        const ansRaw = parseInt(r['Answer']) || 1;
+        const ans = Math.max(0, Math.min(3, ansRaw - 1));
+        const expl = (r['Message with correct answer'] || '').toString().trim();
+        parsedQ.push({ q, opts, ans, expl });
+
+        if (!rawTitle) rawTitle = (r['Quiz Title'] || '').toString().trim();
+        if (!rawSubtitle) rawSubtitle = (r['Quiz Content'] || '').toString().trim();
+      });
+
+      if (!parsedQ.length) { setStatus('No valid questions found. Check that "Question Text" column has content.', 'err'); return; }
+      setStatus(`✓ Loaded ${parsedQ.length} questions from "${file.name}"`, 'ok');
+      if (!document.getElementById('opt-title').value) document.getElementById('opt-title').placeholder = rawTitle || 'Quiz';
+      showPreview();
+      document.getElementById('btn-gen').style.display = 'block';
+    } catch(err) {
+      setStatus('Could not read file: ' + err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showPreview() {
+  const preview = document.getElementById('preview-wrap');
+  preview.classList.add('show');
+  document.getElementById('preview-title').textContent = rawTitle || 'Parsed questions';
+  document.getElementById('preview-count').textContent = `${parsedQ.length} questions total — showing first 5`;
+  const tbody = document.getElementById('preview-body');
+  tbody.innerHTML = '';
+  parsedQ.slice(0, 5).forEach((q, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td title="${q.q}">${q.q.length > 45 ? q.q.slice(0,45)+'…' : q.q}</td>
+      ${q.opts.map((o,oi) => `<td title="${o}" ${oi===q.ans?'style="font-weight:500"':''}>${o.length>18?o.slice(0,18)+'…':o}</td>`).join('')}
+      <td><span class="ans-badge">${['A','B','C','D'][q.ans]}</span></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function generate() {
+  if (!parsedQ.length) { setStatus('No questions loaded yet. Upload a file first.', 'warn'); return; }
+  const title = document.getElementById('opt-title').value.trim() || rawTitle || 'Agriculture Quiz';
+  const siteUrl = (document.getElementById('opt-url').value.trim() || 'https://agriedu4u.com').replace(/\/$/, '');
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const pageUrl = `${siteUrl}/quiz/${slug}/`;
+  const subtitle = rawSubtitle || 'Agriculture · Package of Practices';
+
+  // Build schema hasPart (first 10 for schema)
+  const schemaParts = parsedQ.slice(0, 10).map(q => ({
+    "@type": "Question",
+    "eduQuestionType": "Flashcard",
+    "text": q.q,
+    "acceptedAnswer": { "@type": "Answer", "text": q.opts[q.ans] }
+  }));
+
+  const qJSON = JSON.stringify(parsedQ.map(q => ({ q: q.q, opts: q.opts, ans: q.ans, expl: q.expl })));
+
+  const seoQA = parsedQ.map((q, i) =>
+    `<li class="qa-item"><div class="qa-q">Q${i+1}. ${esc(q.q)}</div><div class="qa-a"><strong>Answer:</strong> ${esc(q.opts[q.ans])}</div></li>`
+  ).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${esc(title)} | Agriedu4u</title>
+  <meta name="description" content="${esc(subtitle)} – Free quiz on Agriedu4u.com." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="${pageUrl}" />
+  <meta property="og:title" content="${esc(title)} | Agriedu4u" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="${pageUrl}" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org/",
+    "@type": "Quiz",
+    "name": "${esc(title)}",
+    "about": { "@type": "Thing", "name": "Agriculture" },
+    "educationalAlignment": [{ "@type": "AlignmentObject", "alignmentType": "educationalSubject", "targetName": "Agriculture" }],
+    "url": "${pageUrl}",
+    "provider": { "@type": "Organization", "name": "Agriedu4u", "url": "${siteUrl}" },
+    "hasPart": ${JSON.stringify(schemaParts, null, 2)}
+  }
+  <\/script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--g:#1a7f5a;--gl:#e8f5ef;--gd:#145f44;--r:#c0392b;--rl:#fdecea;--t:#1a1a1a;--m:#6b7280;--b:#e5e7eb;--bg:#f9fafb;--w:#fff;--rr:10px;--s:'DM Serif Display',serif;--f:'DM Sans',sans-serif}
+    body{font-family:var(--f);background:var(--bg);color:var(--t);min-height:100vh}
+    header{background:var(--w);border-bottom:1px solid var(--b);padding:.8rem 1.25rem;display:flex;align-items:center;justify-content:space-between}
+    .lm{width:30px;height:30px;background:var(--g);border-radius:7px;display:flex;align-items:center;justify-content:center}
+    .lm svg{width:17px;height:17px;fill:white}
+    .lt{font-family:var(--s);font-size:16px;color:var(--t)}
+    .lt span{color:var(--g)}
+    header small{font-size:12px;color:var(--m)}
+    .hero{text-align:center;padding:2rem 1.25rem 1.25rem;max-width:620px;margin:0 auto}
+    .badge{display:inline-block;background:var(--gl);color:var(--g);font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;margin-bottom:.6rem}
+    .hero h1{font-family:var(--s);font-size:clamp(1.4rem,4.5vw,2rem);line-height:1.25;margin-bottom:.4rem}
+    .hero p{font-size:14px;color:var(--m)}
+    #sc{max-width:560px;margin:0 auto;padding:0 1rem 2rem}
+    .cc{background:var(--w);border:1px solid var(--b);border-radius:14px;padding:1.25rem;margin-bottom:1rem}
+    .cl{font-size:12px;font-weight:500;color:var(--m);text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem}
+    .cr{display:flex;gap:8px;flex-wrap:wrap}
+    .ch{padding:6px 14px;border:1px solid var(--b);border-radius:20px;font-size:13px;cursor:pointer;background:var(--bg);color:var(--t);font-family:var(--f);transition:all .15s}
+    .ch.on{border-color:var(--g);background:var(--gl);color:var(--g);font-weight:500}
+    .bs{width:100%;padding:.75rem;background:var(--g);color:white;border:none;border-radius:var(--rr);font-size:15px;font-weight:500;cursor:pointer;font-family:var(--f);margin-top:.5rem;transition:background .15s}
+    .bs:hover{background:var(--gd)}
+    #sq{display:none}
+    .qt{max-width:560px;margin:0 auto;padding:.75rem 1rem .5rem;display:flex;justify-content:space-between;align-items:center}
+    .qm{font-size:12px;color:var(--m)}
+    .sp{background:var(--gl);color:var(--g);font-size:12px;font-weight:500;padding:3px 10px;border-radius:20px}
+    .pw{max-width:560px;margin:0 auto;padding:0 1rem .75rem}
+    .pl{display:flex;justify-content:space-between;font-size:11px;color:var(--m);margin-bottom:4px}
+    .pt{height:4px;background:var(--b);border-radius:2px}
+    .pf{height:4px;background:var(--g);border-radius:2px;transition:width .35s ease}
+    .qc{background:var(--w);border:1px solid var(--b);border-radius:14px;padding:1.4rem;max-width:560px;margin:0 auto}
+    @media(max-width:600px){.qc{margin:0 .75rem;border-radius:12px}}
+    .qn{font-size:11px;color:var(--m);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+    .qt2{font-size:15px;font-weight:500;line-height:1.55;margin-bottom:1.1rem}
+    .ol{display:flex;flex-direction:column;gap:8px}
+    .op{display:flex;align-items:flex-start;gap:10px;width:100%;padding:.65rem .9rem;border:1px solid var(--b);border-radius:var(--rr);background:var(--bg);font-size:13.5px;color:var(--t);text-align:left;cursor:pointer;font-family:var(--f);line-height:1.45;transition:border-color .15s,background .15s}
+    .op:hover:not(:disabled){border-color:var(--g);background:var(--gl)}
+    .op:disabled{cursor:not-allowed}
+    .op.correct{border-color:var(--g);background:var(--gl);color:#0d5c3e}
+    .op.wrong{border-color:var(--r);background:var(--rl);color:#7b1a13}
+    .ok2{min-width:22px;height:22px;border-radius:50%;background:var(--b);font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:center;color:var(--m);flex-shrink:0;margin-top:1px}
+    .op.correct .ok2{background:var(--g);color:white}
+    .op.wrong .ok2{background:var(--r);color:white}
+    .ex{margin-top:.9rem;padding:.7rem .9rem;background:var(--bg);border-left:3px solid var(--g);border-radius:0 var(--rr) var(--rr) 0;font-size:12.5px;color:var(--m);line-height:1.6;display:none}
+    .ex.show{display:block}
+    .bn{width:100%;margin-top:1rem;padding:.6rem;background:var(--g);color:white;border:none;border-radius:var(--rr);font-size:14px;font-weight:500;cursor:pointer;font-family:var(--f);transition:background .15s;display:none}
+    .bn:hover{background:var(--gd)}
+    .bn.show{display:block}
+    #sr{display:none}
+    .rc{background:var(--w);border:1px solid var(--b);border-radius:14px;padding:2rem 1.5rem;max-width:560px;margin:.5rem auto 1.5rem;text-align:center}
+    @media(max-width:600px){.rc{margin:.5rem .75rem 1.5rem}}
+    .rs{font-family:var(--s);font-size:46px}
+    .rsub{font-size:13px;color:var(--m);margin-bottom:1.25rem}
+    .str{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:1.25rem}
+    .st{background:var(--bg);border-radius:var(--rr);padding:.65rem .4rem}
+    .sn{font-size:20px;font-weight:500}
+    .sl{font-size:10px;color:var(--m);margin-top:1px}
+    .rm{font-size:13.5px;color:var(--m);line-height:1.6;margin-bottom:1.25rem}
+    .ba{width:100%;padding:.7rem;background:var(--g);color:white;border:none;border-radius:var(--rr);font-size:14px;font-weight:500;cursor:pointer;font-family:var(--f)}
+    .ba:hover{background:var(--gd)}
+    .bc{width:100%;margin-top:8px;padding:.65rem;background:var(--w);color:var(--t);border:1px solid var(--b);border-radius:var(--rr);font-size:13px;cursor:pointer;font-family:var(--f)}
+    .sw{max-width:560px;margin:1.5rem auto 2.5rem;padding:0 1rem}
+    @media(max-width:600px){.sw{padding:0 .75rem}}
+    .sw h2{font-family:var(--s);font-size:1.1rem;margin-bottom:.75rem}
+    .ql{list-style:none}
+    .qi{border-top:1px solid var(--b);padding:.75rem 0}
+    .qq{font-size:13px;font-weight:500;margin-bottom:3px}
+    .qa{font-size:12.5px;color:var(--m);line-height:1.5}
+    footer{text-align:center;padding:1.25rem;font-size:11px;color:var(--m);border-top:1px solid var(--b)}
+    footer a{color:var(--g);text-decoration:none}
+  </style>
+</head>
+<body>
+<header>
+  <a href="${siteUrl}" style="display:flex;align-items:center;gap:8px;text-decoration:none">
+    <div class="lm"><svg viewBox="0 0 24 24"><path d="M12 2C8 2 5 5 5 9c0 2.5 1.2 4.7 3 6.1V20h8v-4.9c1.8-1.4 3-3.6 3-6.1 0-4-3-7-7-7z"/></svg></div>
+    <span class="lt">agri<span>edu4u</span></span>
+  </a>
+  <small>${esc(subtitle)}</small>
+</header>
+<main>
+  <div class="hero">
+    <div class="badge">${esc(subtitle)} · ${parsedQ.length} Questions</div>
+    <h1>${esc(title)}</h1>
+    <p>Test your knowledge. Choose how many questions and in what order.</p>
+  </div>
+  <div id="sc">
+    <div class="cc">
+      <div class="cl">Number of questions</div>
+      <div class="cr" id="chip-count">
+        ${[10,20,30].filter(n=>n<parsedQ.length).map(n=>`<button class="ch" data-v="${n}">${n}</button>`).join('')}
+        <button class="ch on" data-v="${parsedQ.length}">All ${parsedQ.length}</button>
+      </div>
+    </div>
+    <div class="cc">
+      <div class="cl">Order</div>
+      <div class="cr" id="chip-order">
+        <button class="ch on" data-v="random">Randomised</button>
+        <button class="ch" data-v="sequential">In order</button>
+      </div>
+    </div>
+    <button class="bs" onclick="startQ()">Start quiz →</button>
+  </div>
+  <div id="sq">
+    <div class="qt"><span class="qm" id="qm">Question 1</span><span class="sp" id="sp">Score: 0</span></div>
+    <div class="pw"><div class="pl"><span id="pl">0%</span><span id="pr"></span></div><div class="pt"><div class="pf" id="pf" style="width:0%"></div></div></div>
+    <div class="qc">
+      <div class="qn" id="qn">Question 1</div>
+      <div class="qt2" id="qt2"></div>
+      <div class="ol" id="qo"></div>
+      <div class="ex" id="qe"></div>
+      <button class="bn" id="bn" onclick="nxt()">Next →</button>
+    </div>
+  </div>
+  <div id="sr">
+    <div class="rc">
+      <div style="font-size:38px;margin-bottom:.6rem">🌾</div>
+      <div class="rs" id="rsc"></div>
+      <div class="rsub">${esc(title)}</div>
+      <div class="str">
+        <div class="st"><div class="sn" id="rco"></div><div class="sl">Correct</div></div>
+        <div class="st"><div class="sn" id="rwr"></div><div class="sl">Wrong</div></div>
+        <div class="st"><div class="sn" id="rpc"></div><div class="sl">Accuracy</div></div>
+      </div>
+      <div class="rm" id="rmsg"></div>
+      <button class="ba" onclick="replay()">Try again</button>
+      <button class="bc" onclick="goCfg()">Change settings</button>
+    </div>
+  </div>
+  <div class="sw"><h2>Quiz questions &amp; answers</h2><ul class="ql">${seoQA}</ul></div>
+</main>
+<footer>&copy; 2024 <a href="${siteUrl}">Agriedu4u.com</a> · Agriculture education for everyone</footer>
+<script>
+const AQ=${qJSON};
+let cfg={count:AQ.length,order:'random'},pool=[],cur=0,sc=0;
+document.querySelectorAll('#chip-count .ch').forEach(b=>{b.onclick=()=>{document.querySelectorAll('#chip-count .ch').forEach(x=>x.classList.remove('on'));b.classList.add('on');cfg.count=parseInt(b.dataset.v)||AQ.length}});
+document.querySelectorAll('#chip-order .ch').forEach(b=>{b.onclick=()=>{document.querySelectorAll('#chip-order .ch').forEach(x=>x.classList.remove('on'));b.classList.add('on');cfg.order=b.dataset.v}});
+function shuf(a){const r=[...a];for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]]}return r}
+function startQ(){pool=cfg.order==='random'?shuf(AQ).slice(0,cfg.count):AQ.slice(0,cfg.count);cur=0;sc=0;document.getElementById('sp').textContent='Score: 0';document.getElementById('sc').style.display='none';document.getElementById('sq').style.display='block';document.getElementById('sr').style.display='none';rQ()}
+function rQ(){const q=pool[cur],t=pool.length,p=Math.round((cur/t)*100);document.getElementById('qm').textContent='Question '+(cur+1)+' of '+t;document.getElementById('qn').textContent='Question '+(cur+1);document.getElementById('pl').textContent=p+'%';document.getElementById('pr').textContent=cur+'/'+t+' done';document.getElementById('pf').style.width=p+'%';document.getElementById('qt2').textContent=q.q;document.getElementById('qe').classList.remove('show');document.getElementById('qe').innerHTML='';const bn=document.getElementById('bn');bn.classList.remove('show');bn.textContent=cur===t-1?'See results':'Next →';const qo=document.getElementById('qo');qo.innerHTML='';['A','B','C','D'].forEach((k,i)=>{const b=document.createElement('button');b.className='op';b.innerHTML='<span class="ok2">'+k+'<\/span><span>'+q.opts[i]+'<\/span>';b.onclick=()=>pick(i,q,b);qo.appendChild(b)})}
+function pick(idx,q,btn){document.querySelectorAll('.op').forEach(b=>b.disabled=true);if(idx===q.ans){btn.classList.add('correct');btn.querySelector('.ok2').textContent='✓';sc++}else{btn.classList.add('wrong');btn.querySelector('.ok2').textContent='✗';document.querySelectorAll('.op')[q.ans].classList.add('correct');document.querySelectorAll('.op')[q.ans].querySelector('.ok2').textContent='✓'}document.getElementById('sp').textContent='Score: '+sc;const e=document.getElementById('qe');e.innerHTML='<strong>Correct:<\/strong> '+q.opts[q.ans]+(q.expl?' — '+q.expl:'');e.classList.add('show');document.getElementById('bn').classList.add('show')}
+function nxt(){cur<pool.length-1?(cur++,rQ()):showR()}
+function showR(){document.getElementById('sq').style.display='none';document.getElementById('sr').style.display='block';const t=pool.length,p=Math.round((sc/t)*100);document.getElementById('rsc').textContent=sc+'/'+t;document.getElementById('rco').textContent=sc;document.getElementById('rwr').textContent=t-sc;document.getElementById('rpc').textContent=p+'%';document.getElementById('rmsg').textContent=p>=80?'Excellent! Strong understanding of this topic.':p>=60?'Good effort! Review missed questions and try again.':'Keep practising! Re-read the study material and try again.';document.getElementById('pf').style.width='100%'}
+function replay(){document.getElementById('sr').style.display='none';startQ()}
+function goCfg(){document.getElementById('sr').style.display='none';document.getElementById('sc').style.display='block';document.getElementById('sq').style.display='none'}
+<\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const fname = slug + '.html';
+  const link = document.getElementById('dl-link');
+  link.href = url;
+  link.download = fname;
+  document.getElementById('dl-desc').textContent = `${parsedQ.length} questions · "${title}" · File: ${fname}`;
+  document.getElementById('dl-card').classList.add('show');
+  document.getElementById('dl-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
